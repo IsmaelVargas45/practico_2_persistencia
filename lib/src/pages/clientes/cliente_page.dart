@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/cliente.dart';
+import '../../services/cliente_service.dart';
 import '../../utils/responsive.dart';
 
 class DetalleClientePage extends StatefulWidget {
@@ -65,17 +66,26 @@ class _DetalleClientePageState extends State<DetalleClientePage> {
     );
 
     //Logica de delete de Cliente ...
+    try {
+      await ClienteService().deleteCliente(_clienteActual.id!);
 
-    if (mounted) {
-      Navigator.pop(context);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cliente eliminado'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cliente eliminado'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 

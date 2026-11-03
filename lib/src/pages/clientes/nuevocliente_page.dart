@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../utils/responsive.dart';
+import '../../models/cliente.dart';
+import '../../services/cliente_service.dart';
 
 class NuevoClientePage extends StatefulWidget {
   const NuevoClientePage({super.key});
@@ -30,6 +32,12 @@ class _NuevoClientePageState extends State<NuevoClientePage> {
 
     try {
       //logica de create de Cliente ...
+      await ClienteService().addCliente(
+        Cliente(
+          nombre: _nombreController.text.trim(),
+          telefono: _telefonoController.text.trim(),
+        ),
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
