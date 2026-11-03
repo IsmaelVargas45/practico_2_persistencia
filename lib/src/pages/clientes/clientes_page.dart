@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/cliente.dart';
+import '../../services/cliente_service.dart';
 import '../../utils/responsive.dart';
 
 class ClientesPage extends StatefulWidget {
@@ -11,14 +12,8 @@ class ClientesPage extends StatefulWidget {
 }
 
 class _ClientesPageState extends State<ClientesPage> {
-  Future<List<Cliente>> futureClientes() async {
-    await Future.delayed(const Duration(seconds: 2));
-    return [
-      Cliente(id: '1', nombre: 'Cliente 1', telefono: '1111111111'),
-      Cliente(id: '2', nombre: 'Cliente 2', telefono: '1111111111'),
-      Cliente(id: '3', nombre: 'Cliente 3', telefono: '1111111111'),
-    ];
-  }
+  Future<List<Cliente>> futureClientes() =>
+      ClienteService().getClientes();
 
   Stream<List<Cliente>> getClientes() async* {
     yield await futureClientes();
