@@ -1,14 +1,17 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:material_ui/material_ui.dart' as mui;
-import 'package:dropdown_search/dropdown_search.dart';
+import 'dart:typed_data';
+
 import 'package:image_picker/image_picker.dart';
 
-// Ajusta estas rutas a tu proyecto
 import '../../models/itemproducto.dart';
+import '../../models/pedido.dart';
 import '../../models/cliente.dart';
 import '../../models/producto.dart';
+import '../../services/cliente_service.dart';
+import '../../services/pedido_service.dart';
+import '../../services/producto_service.dart';
 import '../../utils/responsive.dart';
 
 class NuevoPedidoPage extends StatefulWidget {
@@ -20,7 +23,7 @@ class NuevoPedidoPage extends StatefulWidget {
 
 class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
   Cliente? _clienteSeleccionado;
-  List<ItemProducto> _items = [];
+  final List<ItemProducto> _items = [];
   bool _isLoading = false;
 
   File? _imagenSeleccionada;
@@ -29,6 +32,9 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
   final TextEditingController _senaController = TextEditingController();
   late DateTime _fechaEncargo;
   late DateTime _fechaEntrega;
+
+  // Se crea una sola vez para no consultar la base en cada rebuild
+  late final Stream<List<Cliente>> _clientesStream = getClientes();
 
   @override
   void initState() {
@@ -51,17 +57,14 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
   double get _sena => double.tryParse(_senaController.text.trim()) ?? 0.0;
   double get _diferencia => _totalPedido - _sena;
 
-  Future<List<Cliente>> futureClientes() async {
-    await Future.delayed(const Duration(seconds: 2));
-    return [
-      Cliente(id: '1', nombre: 'Cliente 1', telefono: '1111111111'),
-      Cliente(id: '2', nombre: 'Cliente 2', telefono: '1111111111'),
-      Cliente(id: '3', nombre: 'Cliente 3', telefono: '1111111111'),
-    ];
+  // --- DATOS (Supabase) ---
+  Stream<List<Cliente>> getClientes() async* {
+    yield await ClienteService().getClientes();
   }
 
-  Stream<List<Cliente>> getClientes() async* {
-    yield await futureClientes();
+  Stream<List<Producto>> getProductos() async* {
+    // Revisa que el método se llame así en tu producto_service.dart
+    yield await ProductoService().getProductos();
   }
 
   // --- MÉTODOS DE UI ---
@@ -95,6 +98,11 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
     }
   }
 
+// Variable de estado para guardar los bytes de la imagen seleccionada
+  Uint8List? _imagenBytes;
+// Asegúrate de tener tu instancia de _picker declarada
+
+  // 1. Función que muestra el menú flotante para elegir galería o cámara
   void _mostrarOpcionesDeImagen() {
     showModalBottomSheet(
       context: context,
@@ -128,6 +136,7 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
     );
   }
 
+  // 2. Función que procesa la selección y lee los bytes (compatible con Web y Móvil)
   Future<void> _seleccionarImagen(ImageSource origen) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
@@ -137,9 +146,15 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
       );
 
       if (pickedFile != null) {
-        setState(() => _imagenSeleccionada = File(pickedFile.path));
+        // Leemos los bytes para que funcione correctamente en la web
+        final bytes = await pickedFile.readAsBytes();
+
+        setState(() {
+          _imagenBytes = bytes;
+        });
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error al seleccionar imagen')),
       );
@@ -149,8 +164,9 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
   // --- GUARDADO ---
   Future<void> _guardarPedido() async {
     if (_clienteSeleccionado == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Selecciona un cliente')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Selecciona un cliente')));
       return;
     }
     if (_items.isEmpty) {
@@ -168,11 +184,21 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
 
     setState(() => _isLoading = true);
 
-    //Logica de CREATE Pedido
+    try {
+      final pedido = Pedido(
+        idCliente: _clienteSeleccionado!.id!,
+        nombreCliente: _clienteSeleccionado!.nombre,
+        items: _items,
+        imagen: _imagenSeleccionada?.path ?? '',
+        sena: _sena,
+        fechaEntrega: _fechaEntrega,
+        fechaEncargo: _fechaEncargo,
+        pagoRealizado: _diferencia <= 0,
+      );
 
-    if (mounted) {
-      setState(() => _isLoading = false);
+      await PedidoService().addPedido(pedido);
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('¡Pedido creado con éxito!'),
@@ -180,6 +206,13 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
         ),
       );
       Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -231,47 +264,73 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
     );
   }
 
-  Widget _cliente(Responsive responsive, ThemeData theme) {
-    return StreamBuilder<List<Cliente>>(
-      stream: getClientes(),
-      builder: (context, snapshot) {
-        final clientes = snapshot.data ?? [];
-        return DropdownSearch<Cliente>(
-          items: (filter, s) => clientes,
-          compareFn: (item1, item2) => item1.id == item2.id,
-          selectedItem: _clienteSeleccionado,
-          // Le decimos al paquete qué atributo del objeto debe mostrar en pantalla
-          itemAsString: (Cliente c) => c.nombre,
-          onSelected: (Cliente? item) {
-            setState(() {
-              _clienteSeleccionado = item;
-            });
-          },
-          popupProps: PopupProps.menu(
-            showSearchBox: true,
-            searchFieldProps: const TextFieldProps(
-              decoration: mui.InputDecoration(
-                hintText: "Buscar cliente...",
-                prefixIcon: Icon(Icons.search),
-              ),
-            ),
-            emptyBuilder: (context, searchEntry) =>
-                Center(child: Text('No se encontró a "$searchEntry"')),
-          ),
-          // Configuración visual del botón principal
-          decoratorProps: DropDownDecoratorProps(
-            decoration: mui.InputDecoration(
+
+Widget _cliente(Responsive responsive, ThemeData theme) {
+  return StreamBuilder<List<Cliente>>(
+    stream: _clientesStream,
+    builder: (context, snapshot) {
+      final clientes = snapshot.data ?? [];
+      
+      return Autocomplete<Cliente>(
+        displayStringForOption: (Cliente cliente) => cliente.nombre,
+        optionsBuilder: (TextEditingValue textEditingValue) {
+          if (textEditingValue.text.isEmpty) {
+            return clientes;
+          }
+          return clientes.where((Cliente cliente) {
+            return cliente.nombre.toLowerCase().contains(
+              textEditingValue.text.toLowerCase(),
+            );
+          });
+        },
+        onSelected: (Cliente selection) {
+          setState(() {
+            _clienteSeleccionado = selection;
+          });
+        },
+        fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+          if (_clienteSeleccionado != null && 
+              textEditingController.text.isEmpty && 
+              _clienteSeleccionado!.nombre.isNotEmpty) {
+            textEditingController.text = _clienteSeleccionado!.nombre;
+          }
+
+          return TextField(
+            controller: textEditingController,
+            focusNode: focusNode,
+            decoration: InputDecoration(
               labelText: 'Cliente seleccionado',
+              hintText: 'Escribe para buscar cliente...',
               prefixIcon: Icon(
                 Icons.person_search_rounded,
                 color: theme.colorScheme.primary,
               ),
+              border:  OutlineInputBorder(),
+              suffixIcon: textEditingController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        textEditingController.clear();
+                        setState(() {
+                          _clienteSeleccionado = null;
+                        });
+                      },
+                    )
+                  : null,
             ),
-          ),
-        );
-      },
-    );
-  }
+            onChanged: (value) {
+              if (value.isEmpty) {
+                setState(() {
+                  _clienteSeleccionado = null;
+                });
+              }
+            },
+          );
+        },
+      );
+    },
+  );
+}
 
   Widget _fechas(Responsive responsive, ThemeData theme) {
     return Row(
@@ -446,7 +505,7 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
 
         SizedBox(height: responsive.hp(3)),
 
-        // Sección Imagen
+       // Sección Imagen
         const Text(
           'Boceto/Ref.',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -460,14 +519,14 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
-              image: _imagenSeleccionada != null
+              image: _imagenBytes != null
                   ? DecorationImage(
-                      image: FileImage(_imagenSeleccionada!),
+                      image: MemoryImage(_imagenBytes!),
                       fit: BoxFit.cover,
                     )
                   : null,
             ),
-            child: _imagenSeleccionada == null
+            child: _imagenBytes == null
                 ? const Center(
                     child: Icon(
                       Icons.add_a_photo,
@@ -478,11 +537,11 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
                 : null,
           ),
         ),
-        if (_imagenSeleccionada != null)
+        if (_imagenBytes != null)
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
-              onPressed: () => setState(() => _imagenSeleccionada = null),
+              onPressed: () => setState(() => _imagenBytes = null),
               icon: const Icon(Icons.delete, color: Colors.red, size: 16),
               label: const Text(
                 'Quitar foto',
@@ -574,19 +633,6 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
         ],
       ),
     );
-  }
-
-  Future<List<Producto>> futureProductos() async {
-    await Future.delayed(const Duration(seconds: 2));
-    return [
-      Producto(id: '1', nombre: 'Producto 1', precio: 135060, imagen: ''),
-      Producto(id: '2', nombre: 'Producto 2', precio: 250000, imagen: ''),
-      Producto(id: '3', nombre: 'Producto 3', precio: 5862000, imagen: ''),
-    ];
-  }
-
-  Stream<List<Producto>> getProductos() async* {
-    yield await futureProductos();
   }
 
   // MODAL PARA SELECCIONAR PRODUCTOS

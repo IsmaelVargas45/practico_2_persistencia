@@ -1,15 +1,17 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:material_ui/material_ui.dart' as mui;
+
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:image_picker/image_picker.dart';
-
+import 'package:material_ui/material_ui.dart'as mui;
 import '../../models/itemproducto.dart';
 import '../../models/pedido.dart';
 import '../../models/cliente.dart';
 import '../../models/producto.dart';
-
+import '../../services/cliente_service.dart';
+import '../../services/pedido_service.dart';
+import '../../services/producto_service.dart';
 import '../../utils/responsive.dart';
 
 class EditarPedidoPage extends StatefulWidget {
@@ -34,6 +36,9 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
   String _imagenActualPath = '';
   File? _nuevaImagenFile;
   final ImagePicker _picker = ImagePicker();
+
+  // Se crea una sola vez para no consultar la base en cada rebuild
+  late final Stream<List<Cliente>> _clientesStream = getClientes();
 
   @override
   void initState() {
@@ -69,6 +74,16 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
   double get _totalPedido => _items.fold(0, (sum, item) => sum + item.subtotal);
   double get _sena => double.tryParse(_senaController.text.trim()) ?? 0.0;
   double get _diferencia => _totalPedido - _sena;
+
+  // --- DATOS (Supabase) ---
+  Stream<List<Cliente>> getClientes() async* {
+    yield await ClienteService().getClientes();
+  }
+
+  Stream<List<Producto>> getProductos() async* {
+    // Revisa que el método se llame así en tu producto_service.dart
+    yield await ProductoService().getProductos();
+  }
 
   void _agregarProducto(Producto producto) {
     setState(() {
@@ -154,6 +169,7 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
         });
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error al seleccionar imagen')),
       );
@@ -170,8 +186,9 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
   // --- GUARDADO ---
   Future<void> _actualizarPedido() async {
     if (_clienteSeleccionado == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Selecciona un cliente')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Selecciona un cliente')));
       return;
     }
     if (_items.isEmpty) {
@@ -189,33 +206,37 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
 
     setState(() => _isLoading = true);
 
-    // Logica de UPDATE de Pedido
-    if (mounted) {
-      setState(() => _isLoading = false);
+    try {
+      final pedidoEditado = Pedido(
+        id: widget.pedido.id,
+        idCliente: _clienteSeleccionado!.id!,
+        nombreCliente: _clienteSeleccionado!.nombre,
+        items: _items,
+        imagen: _nuevaImagenFile?.path ?? _imagenActualPath,
+        sena: _sena,
+        fechaEntrega: _fechaEntrega,
+        fechaEncargo: _fechaEncargo,
+        pagoRealizado: _diferencia <= 0,
+      );
 
+      await PedidoService().updatePedido(pedidoEditado);
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cambios guardados con éxito'),
           backgroundColor: Colors.green,
         ),
       );
-      Navigator.pop(context);
-      //pedidoEditado,
-      //);
+      Navigator.pop(context, pedidoEditado); // el detalle lo necesita
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  Future<List<Cliente>> futureClientes() async {
-    await Future.delayed(const Duration(seconds: 2));
-    return [
-      Cliente(id: '1', nombre: 'Cliente 1', telefono: '1111111111'),
-      Cliente(id: '2', nombre: 'Cliente 2', telefono: '1111111111'),
-      Cliente(id: '3', nombre: 'Cliente 3', telefono: '1111111111'),
-    ];
-  }
-
-  Stream<List<Cliente>> getClientes() async* {
-    yield await futureClientes();
   }
 
   @override
@@ -237,7 +258,7 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
                   children: [
                     // 1. SELECCIÓN DE CLIENTE
                     StreamBuilder<List<Cliente>>(
-                      stream: getClientes(),
+                      stream: _clientesStream,
                       builder: (context, snapshot) {
                         if (!snapshot.hasData) {
                           return const LinearProgressIndicator();
@@ -258,38 +279,33 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
                           items: (filter, s) => clientes,
                           compareFn: (item1, item2) => item1.id == item2.id,
                           selectedItem: _clienteSeleccionado,
-                          // Le decimos al paquete qué atributo del objeto debe mostrar en pantalla
                           itemAsString: (Cliente c) => c.nombre,
-                          // Qué pasa cuando el usuario elige uno
                           onSelected: (Cliente? item) {
                             setState(() {
                               _clienteSeleccionado = item;
                             });
                           },
-                          // Configuración de la ventana de búsqueda (Menú desplegable)
                           popupProps: PopupProps.menu(
                             showSearchBox: true,
-                            searchFieldProps: const TextFieldProps(
-                              decoration: mui.InputDecoration(
-                                hintText: "Buscar cliente...",
-                                prefixIcon: Icon(Icons.search),
-                              ),
-                            ),
-                            // Mensaje por si busca un cliente que no existe
-                            emptyBuilder: (context, searchEntry) => Center(
-                              child: Text('No se encontró a "$searchEntry"'),
-                            ),
+                            searchFieldProps: TextFieldProps(
+              decoration: mui.InputDecoration( // <--- Usamos el mui aquí
+                hintText: "Buscar cliente...",
+                prefixIcon: const Icon(Icons.search),
+                border:  mui.OutlineInputBorder(),
+              ),
+            ),
+            emptyBuilder: (context, searchEntry) => Center(
+              child: Text('No se encontró a "$searchEntry"'),
+            ),
+          ),
+          decoratorProps: DropDownDecoratorProps(
+            decoration: mui.InputDecoration( // <--- Y aquí también
+              labelText: 'Cliente seleccionado',
+              prefixIcon: Icon(
+                Icons.person_search_rounded,
+                color: theme.colorScheme.primary,
                           ),
-                          // Configuración visual del botón principal
-                          decoratorProps: DropDownDecoratorProps(
-                            decoration: mui.InputDecoration(
-                              labelText: 'Cliente seleccionado',
-                              prefixIcon: Icon(
-                                Icons.person_search_rounded,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                          ),
+                        ),)
                         );
                       },
                     ),
@@ -439,11 +455,9 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
                     SizedBox(height: responsive.hp(2)),
 
                     // 4. FINANZAS E IMAGEN DE REFERENCIA
-                    // 4. FINANZAS E IMAGEN DE REFERENCIA (Reorganizado)
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Sección Seña (Arriba)
                         const Text(
                           'Adelanto / Seña',
                           style: TextStyle(fontWeight: FontWeight.bold),
@@ -461,7 +475,6 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
 
                         SizedBox(height: responsive.hp(3)),
 
-                        // Sección Imagen Compleja (Abajo)
                         const Text(
                           'Boceto/Ref.',
                           style: TextStyle(fontWeight: FontWeight.bold),
@@ -470,11 +483,8 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
                         GestureDetector(
                           onTap: _mostrarOpcionesDeImagen,
                           child: Container(
-                            height: responsive.dp(
-                              18,
-                            ), // Más alto para aprovechar el ancho completo
-                            width: double
-                                .infinity, // Ocupa todo el ancho disponible
+                            height: responsive.dp(18),
+                            width: double.infinity,
                             decoration: BoxDecoration(
                               color: theme.colorScheme.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(12),
@@ -622,19 +632,6 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
         ),
       ),
     );
-  }
-
-  Future<List<Producto>> futureProductos() async {
-    await Future.delayed(const Duration(seconds: 2));
-    return [
-      Producto(id: '1', nombre: 'Producto 1', precio: 135060, imagen: ''),
-      Producto(id: '2', nombre: 'Producto 2', precio: 250000, imagen: ''),
-      Producto(id: '3', nombre: 'Producto 3', precio: 5862000, imagen: ''),
-    ];
-  }
-
-  Stream<List<Producto>> getProductos() async* {
-    yield await futureProductos();
   }
 
   // --- MODAL PARA AGREGAR PRODUCTOS ---

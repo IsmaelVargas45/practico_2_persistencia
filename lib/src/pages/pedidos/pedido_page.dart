@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/pedido.dart';
 import '../../models/cliente.dart';
 import '../../utils/responsive.dart';
+import '../../services/pedido_service.dart';
+import '../../services/database_service.dart';
 
 class DetallePedidoPage extends StatefulWidget {
   final Pedido pedido;
@@ -21,6 +23,8 @@ class _DetallePedidoPageState extends State<DetallePedidoPage> {
   late Pedido _pedidoActual;
   Cliente? _clienteCompleto;
   bool _isLoading = true;
+  bool _procesando = false;
+  final PedidoService _pedidoService = PedidoService();
 
   @override
   void initState() {
@@ -31,18 +35,22 @@ class _DetallePedidoPageState extends State<DetallePedidoPage> {
 
   Future<void> _cargarDatosCliente() async {
     try {
-      // Logica de READ de Cliente
+      final clienteMap = await DatabaseService.instance.client
+          .from('clientes')
+          .select('id, nombre, telefono')
+          .eq('id', _pedidoActual.idCliente)
+          .maybeSingle();
+
+      if (!mounted) return;
       setState(() {
-        _clienteCompleto = Cliente(
-          id: '1',
-          nombre: 'Cliente',
-          telefono: '1111111111',
-        );
+        _clienteCompleto = clienteMap == null
+            ? null
+            : Cliente.fromMap(Map<String, dynamic>.from(clienteMap));
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
-      print('Error al cargar cliente: $e');
+      debugPrint('Error al cargar cliente: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -114,30 +122,39 @@ class _DetallePedidoPageState extends State<DetallePedidoPage> {
               }
 
               Navigator.pop(ctx);
+              if (_pedidoActual.id == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No se encontró el ID del pedido.')),
+                );
+                return;
+              }
 
-              // 3. Actualizamos el estado
-              setState(() {
-                // Le sumamos el nuevo pago a la seña que ya existía
-                _pedidoActual.sena += montoIngresado;
+              final double nuevaSena = _pedidoActual.sena + montoIngresado;
+              final bool pagoCompleto = nuevaSena >= _pedidoActual.total;
+              final double senaAnterior = _pedidoActual.sena;
+              final bool estadoAnterior = _pedidoActual.pagoRealizado;
 
-                // Si con este pago la diferencia llega a 0, marcamos el flag de finalizado
-                if (_pedidoActual.diferencia <= 0) {
-                  _pedidoActual.pagoRealizado = true;
-                }
-              });
+              setState(() => _procesando = true);
+              try {
+                _pedidoActual.sena = nuevaSena;
+                _pedidoActual.pagoRealizado = pagoCompleto;
+                await _pedidoService.updatePago(_pedidoActual);
 
-              // Guardamos en la base de datos (pasamos null en la imagen porque no la estamos editando)
-              // Completar la logica de Update de Pedido
-
-              if (mounted) {
+                if (!mounted) return;
+                setState(() => _procesando = false);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text(
-                      'Pago registrado con éxito',
-                      style: TextStyle(color: Colors.white),
-                    ),
+                    content: Text('Pago registrado correctamente.'),
                     backgroundColor: Colors.green,
                   ),
+                );
+              } catch (e) {
+                _pedidoActual.sena = senaAnterior;
+                _pedidoActual.pagoRealizado = estadoAnterior;
+                if (!mounted) return;
+                setState(() => _procesando = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('No se pudo guardar el pago: $e')),
                 );
               }
             },
@@ -172,10 +189,23 @@ class _DetallePedidoPageState extends State<DetallePedidoPage> {
               foregroundColor: Colors.white,
             ),
             onPressed: () async {
-              Navigator.pop(ctx); // cierra el alerta
-              //Completar logica de DELETE de Pedido
-              if (mounted) {
-                Navigator.pop(context); // Vuelve a la lista
+              Navigator.pop(ctx);
+              if (_pedidoActual.id == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No se encontró el ID del pedido.')),
+                );
+                return;
+              }
+              try {
+                setState(() => _procesando = true);
+                await _pedidoService.deletePedido(_pedidoActual.id!);
+                if (mounted) Navigator.pop(context, true);
+              } catch (e) {
+                if (!mounted) return;
+                setState(() => _procesando = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('No se pudo eliminar el pedido: $e')),
+                );
               }
             },
             child: const Text('Eliminar'),
@@ -187,7 +217,12 @@ class _DetallePedidoPageState extends State<DetallePedidoPage> {
 
   // WhatsApp
   Future<void> _enviarWhatsApp() async {
-    if (_clienteCompleto == null || _clienteCompleto!.telefono.isEmpty) return;
+    if (_clienteCompleto == null || _clienteCompleto!.telefono.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Este cliente no tiene un teléfono registrado.')),
+      );
+      return;
+    }
 
     final buffer = StringBuffer();
     buffer.writeln(
@@ -300,7 +335,7 @@ class _DetallePedidoPageState extends State<DetallePedidoPage> {
                     Icons.delete_outline,
                     color: Colors.redAccent,
                   ),
-                  onPressed: _confirmarEliminacion,
+                  onPressed: _procesando ? null : _confirmarEliminacion,
                 ),
               ]
             : null,
@@ -554,7 +589,7 @@ class _DetallePedidoPageState extends State<DetallePedidoPage> {
                 'Registrar Pago',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
-              onPressed: _registrarPago,
+              onPressed: _procesando ? null : _registrarPago,
             ),
           ),
         ],
