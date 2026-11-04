@@ -1,10 +1,12 @@
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../components/visorimagen_page.dart';
 import '../../models/producto.dart';
+import '../../services/producto_service.dart';
 import '../../utils/responsive.dart';
 
 class EditarProductoPage extends StatefulWidget {
@@ -21,7 +23,7 @@ class _EditarProductoPageState extends State<EditarProductoPage> {
   final _nombreController = TextEditingController();
   final _precioController = TextEditingController();
 
-  File? _imagenSeleccionada;
+  Uint8List? _imagenSeleccionada; // bytes: funciona en web y en móvil
   bool _isLoading = false;
 
   @override
@@ -36,15 +38,6 @@ class _EditarProductoPageState extends State<EditarProductoPage> {
     super.initState();
     _nombreController.text = widget.producto.nombre;
     _precioController.text = widget.producto.precio.toString();
-
-    if (widget.producto.imagen.isNotEmpty &&
-        widget.producto.imagen.startsWith('/') &&
-        widget.producto.imagen.length < 500) {
-      final archivoLocal = File(widget.producto.imagen);
-      if (archivoLocal.existsSync()) {
-        _imagenSeleccionada = archivoLocal;
-      }
-    }
   }
 
   Future<void> _seleccionarImagen(ImageSource origen) async {
@@ -57,8 +50,9 @@ class _EditarProductoPageState extends State<EditarProductoPage> {
       );
 
       if (imagen != null) {
+        final bytes = await imagen.readAsBytes();
         setState(() {
-          _imagenSeleccionada = File(imagen.path);
+          _imagenSeleccionada = bytes;
         });
       }
     } catch (e) {
@@ -118,7 +112,29 @@ class _EditarProductoPageState extends State<EditarProductoPage> {
       final String precioTexto = _precioController.text.replaceAll(',', '.');
       final double precio = double.parse(precioTexto);
 
-      //Logica de edicion de Producto ...
+      // Si no eligió una imagen nueva, se mantiene la que ya tenía
+      final String imagen = _imagenSeleccionada != null
+          ? base64Encode(_imagenSeleccionada!)
+          : widget.producto.imagen;
+
+      final productoEditado = Producto(
+        id: widget.producto.id,
+        nombre: _nombreController.text.trim(),
+        precio: precio,
+        imagen: imagen,
+      );
+
+      await ProductoService().updateProducto(productoEditado);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Producto actualizado con éxito'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, productoEditado);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -182,7 +198,7 @@ class _EditarProductoPageState extends State<EditarProductoPage> {
             border: Border.all(color: theme.colorScheme.outline, width: 2),
             image: _imagenSeleccionada != null
                 ? DecorationImage(
-                    image: FileImage(_imagenSeleccionada!),
+                    image: MemoryImage(_imagenSeleccionada!),
                     fit: BoxFit.cover,
                   )
                 : null,

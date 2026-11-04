@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../components/visorimagen_page.dart';
 import '../../models/producto.dart';
+import '../../services/producto_service.dart';
 import '../../utils/responsive.dart';
 
 class ProductosPage extends StatefulWidget {
@@ -12,14 +13,8 @@ class ProductosPage extends StatefulWidget {
 }
 
 class _ProductosPageState extends State<ProductosPage> {
-  Future<List<Producto>> futureProductos() async {
-    await Future.delayed(const Duration(seconds: 2));
-    return [
-      Producto(id: '1', nombre: 'Producto 1', precio: 135060, imagen: ''),
-      Producto(id: '2', nombre: 'Producto 2', precio: 250000, imagen: ''),
-      Producto(id: '3', nombre: 'Producto 3', precio: 5862000, imagen: ''),
-    ];
-  }
+  Future<List<Producto>> futureProductos() =>
+      ProductoService().getProductos();
 
   Stream<List<Producto>> getProductos() async* {
     yield await futureProductos();
@@ -48,8 +43,9 @@ class _ProductosPageState extends State<ProductosPage> {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.pushNamed(context, '/nuevo_producto');
+        onPressed: () async {
+          await Navigator.pushNamed(context, '/nuevo_producto');
+          if (mounted) setState(() {});
         },
         icon: const Icon(Icons.add),
         label: const Text('Nuevo Producto'),

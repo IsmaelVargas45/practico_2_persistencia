@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../components/visorimagen_page.dart';
 import '../../models/producto.dart';
+import '../../services/producto_service.dart';
 import '../../utils/responsive.dart';
 
 class DetalleProductoPage extends StatefulWidget {
@@ -62,7 +63,25 @@ class _DetalleProductoPageState extends State<DetalleProductoPage> {
   }
 
   Future<void> _ejecutarBorrado(BuildContext context) async {
-    //logica delete de Producto...
+    try {
+      await ProductoService().deleteProducto(_productoActual.id!);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Producto eliminado'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al eliminar: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 class VisorImagen extends StatelessWidget {
@@ -18,7 +19,7 @@ class VisorImagen extends StatelessWidget {
     }
 
     // 1. Ruta local
-    if (imagen.startsWith('/') && imagen.length < 500) {
+    if (!kIsWeb && imagen.startsWith('/') && imagen.length < 500) {
       final archivo = File(imagen);
       if (archivo.existsSync()) {
         return Image.file(archivo, fit: BoxFit.cover, width: double.infinity);

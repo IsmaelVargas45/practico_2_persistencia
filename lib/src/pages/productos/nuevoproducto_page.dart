@@ -1,8 +1,11 @@
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../models/producto.dart';
+import '../../services/producto_service.dart';
 import '../../utils/responsive.dart';
 
 class NuevoProductoPage extends StatefulWidget {
@@ -17,7 +20,7 @@ class _NuevoProductoPageState extends State<NuevoProductoPage> {
   final _nombreController = TextEditingController();
   final _precioController = TextEditingController();
 
-  File? _imagenSeleccionada;
+  Uint8List? _imagenSeleccionada; // bytes: funciona en web y en móvil
   bool _isLoading = false;
 
   @override
@@ -37,8 +40,9 @@ class _NuevoProductoPageState extends State<NuevoProductoPage> {
       );
 
       if (imagen != null) {
+        final bytes = await imagen.readAsBytes();
         setState(() {
-          _imagenSeleccionada = File(imagen.path);
+          _imagenSeleccionada = bytes;
         });
       }
     } catch (e) {
@@ -98,7 +102,18 @@ class _NuevoProductoPageState extends State<NuevoProductoPage> {
       final String precioTexto = _precioController.text.replaceAll(',', '.');
       final double precio = double.parse(precioTexto);
 
-      //logica de create de Producto
+      // La imagen se guarda en base64 (VisorImagen ya sabe mostrarla)
+      final String imagen = base64Encode(
+        _imagenSeleccionada!,
+      );
+
+      await ProductoService().addProducto(
+        Producto(
+          nombre: _nombreController.text.trim(),
+          precio: precio,
+          imagen: imagen,
+        ),
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -172,7 +187,7 @@ class _NuevoProductoPageState extends State<NuevoProductoPage> {
             border: Border.all(color: theme.colorScheme.outline, width: 2),
             image: _imagenSeleccionada != null
                 ? DecorationImage(
-                    image: FileImage(_imagenSeleccionada!),
+                    image: MemoryImage(_imagenSeleccionada!),
                     fit: BoxFit.cover,
                   )
                 : null,
