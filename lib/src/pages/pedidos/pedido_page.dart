@@ -403,7 +403,7 @@ class _DetallePedidoPageState extends State<DetallePedidoPage> {
                       borderRadius: BorderRadius.circular(8),
                       image: DecorationImage(
                         image: FileImage(File(_pedidoActual.imagen)),
-                        fit: BoxFit.cover,
+                        fit: BoxFit.contain,
                       ),
                       border: Border.all(color: theme.colorScheme.primary),
                     ),

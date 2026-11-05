@@ -2,9 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import 'package:dropdown_search/dropdown_search.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:material_ui/material_ui.dart'as mui;
 import '../../models/itemproducto.dart';
 import '../../models/pedido.dart';
 import '../../models/cliente.dart';
@@ -186,9 +184,8 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
   // --- GUARDADO ---
   Future<void> _actualizarPedido() async {
     if (_clienteSeleccionado == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Selecciona un cliente')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Selecciona un cliente')));
       return;
     }
     if (_items.isEmpty) {
@@ -275,40 +272,65 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
                           _inicializado = true;
                         }
 
-                        return DropdownSearch<Cliente>(
-                          items: (filter, s) => clientes,
-                          compareFn: (item1, item2) => item1.id == item2.id,
-                          selectedItem: _clienteSeleccionado,
-                          itemAsString: (Cliente c) => c.nombre,
-                          onSelected: (Cliente? item) {
-                            setState(() {
-                              _clienteSeleccionado = item;
-                            });
-                          },
-                          popupProps: PopupProps.menu(
-                            showSearchBox: true,
-                            searchFieldProps: TextFieldProps(
-              decoration: mui.InputDecoration( // <--- Usamos el mui aquí
-                hintText: "Buscar cliente...",
-                prefixIcon: const Icon(Icons.search),
-                border:  mui.OutlineInputBorder(),
-              ),
-            ),
-            emptyBuilder: (context, searchEntry) => Center(
-              child: Text('No se encontró a "$searchEntry"'),
-            ),
-          ),
-          decoratorProps: DropDownDecoratorProps(
-            decoration: mui.InputDecoration( // <--- Y aquí también
-              labelText: 'Cliente seleccionado',
-              prefixIcon: Icon(
-                Icons.person_search_rounded,
-                color: theme.colorScheme.primary,
+                        return Autocomplete<Cliente>(
+                          initialValue: TextEditingValue(
+                            text: _clienteSeleccionado?.nombre ?? '',
                           ),
-                        ),)
+                          displayStringForOption: (Cliente c) => c.nombre,
+                          optionsBuilder: (TextEditingValue value) {
+                            final texto = value.text.trim().toLowerCase();
+                            // Con el cliente actual escrito, mostramos toda la lista
+                            if (texto.isEmpty ||
+                                texto ==
+                                    _clienteSeleccionado?.nombre
+                                        .toLowerCase()) {
+                              return clientes;
+                            }
+                            return clientes.where(
+                              (c) => c.nombre.toLowerCase().contains(texto),
+                            );
+                          },
+                          onSelected: (Cliente seleccion) {
+                            setState(() => _clienteSeleccionado = seleccion);
+                          },
+                          fieldViewBuilder:
+                              (context, controller, focusNode, onSubmitted) {
+                                return TextField(
+                                  controller: controller,
+                                  focusNode: focusNode,
+                                  decoration: InputDecoration(
+                                    labelText: 'Cliente seleccionado',
+                                    hintText: 'Escribe para buscar cliente...',
+                                    border: const OutlineInputBorder(),
+                                    prefixIcon: Icon(
+                                      Icons.person_search_rounded,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                    suffixIcon: IconButton(
+                                      icon: const Icon(Icons.clear),
+                                      onPressed: () {
+                                        controller.clear();
+                                        setState(
+                                          () => _clienteSeleccionado = null,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  onChanged: (value) {
+                                    // Si edita el texto, hay que volver a elegir de la lista
+                                    if (_clienteSeleccionado != null &&
+                                        value != _clienteSeleccionado!.nombre) {
+                                      setState(
+                                        () => _clienteSeleccionado = null,
+                                      );
+                                    }
+                                  },
+                                );
+                              },
                         );
                       },
                     ),
+                    
                     SizedBox(height: responsive.hp(2)),
 
                     // 2. FECHAS (Ambas son editables)
@@ -492,12 +514,12 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
                               image: _nuevaImagenFile != null
                                   ? DecorationImage(
                                       image: FileImage(_nuevaImagenFile!),
-                                      fit: BoxFit.cover,
+                                      fit: BoxFit.contain,
                                     )
                                   : (_imagenActualPath.isNotEmpty)
                                   ? DecorationImage(
                                       image: FileImage(File(_imagenActualPath)),
-                                      fit: BoxFit.cover,
+                                      fit: BoxFit.contain,
                                     )
                                   : null,
                             ),

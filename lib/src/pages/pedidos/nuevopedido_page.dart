@@ -100,8 +100,6 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
 
 // Variable de estado para guardar los bytes de la imagen seleccionada
   Uint8List? _imagenBytes;
-// Asegúrate de tener tu instancia de _picker declarada
-
   // 1. Función que muestra el menú flotante para elegir galería o cámara
   void _mostrarOpcionesDeImagen() {
     showModalBottomSheet(
@@ -141,7 +139,7 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: origen,
-        imageQuality: 60, // Comprimimos al 60% de calidad
+        imageQuality: 70, // Comprimimos al 60% de calidad
         maxWidth: 800, // Reducimos el tamaño para que no pese megabytes
       );
 
@@ -522,7 +520,7 @@ Widget _cliente(Responsive responsive, ThemeData theme) {
               image: _imagenBytes != null
                   ? DecorationImage(
                       image: MemoryImage(_imagenBytes!),
-                      fit: BoxFit.cover,
+                      fit: BoxFit.contain,
                     )
                   : null,
             ),
