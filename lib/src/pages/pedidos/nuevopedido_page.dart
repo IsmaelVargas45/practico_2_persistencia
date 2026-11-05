@@ -1,10 +1,10 @@
-import 'dart:io';
+
 
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
 
 import 'package:image_picker/image_picker.dart';
-
+import 'dart:convert';
 import '../../models/itemproducto.dart';
 import '../../models/pedido.dart';
 import '../../models/cliente.dart';
@@ -26,7 +26,7 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
   final List<ItemProducto> _items = [];
   bool _isLoading = false;
 
-  File? _imagenSeleccionada;
+ 
   final ImagePicker _picker = ImagePicker();
 
   final TextEditingController _senaController = TextEditingController();
@@ -187,7 +187,7 @@ class _NuevoPedidoPageState extends State<NuevoPedidoPage> {
         idCliente: _clienteSeleccionado!.id!,
         nombreCliente: _clienteSeleccionado!.nombre,
         items: _items,
-        imagen: _imagenSeleccionada?.path ?? '',
+        imagen: _imagenBytes != null ? base64Encode(_imagenBytes!) : '',
         sena: _sena,
         fechaEntrega: _fechaEntrega,
         fechaEncargo: _fechaEncargo,

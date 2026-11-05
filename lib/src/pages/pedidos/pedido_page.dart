@@ -1,5 +1,4 @@
-import 'dart:io';
-
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -276,7 +275,7 @@ class _DetallePedidoPageState extends State<DetallePedidoPage> {
               boundaryMargin: const EdgeInsets.all(100),
               minScale: 0.5,
               maxScale: 3,
-              child: Image.file(File(_pedidoActual.imagen)),
+              child: Image.memory(base64Decode(_pedidoActual.imagen)),
             ),
             Positioned(
               top: 40,
@@ -402,7 +401,7 @@ class _DetallePedidoPageState extends State<DetallePedidoPage> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       image: DecorationImage(
-                        image: FileImage(File(_pedidoActual.imagen)),
+                        image: MemoryImage(base64Decode(_pedidoActual.imagen)),
                         fit: BoxFit.contain,
                       ),
                       border: Border.all(color: theme.colorScheme.primary),

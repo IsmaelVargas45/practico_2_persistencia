@@ -1,8 +1,10 @@
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import 'package:image_picker/image_picker.dart';
+
 import '../../models/itemproducto.dart';
 import '../../models/pedido.dart';
 import '../../models/cliente.dart';
@@ -32,7 +34,8 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
   final TextEditingController _senaController = TextEditingController();
 
   String _imagenActualPath = '';
-  File? _nuevaImagenFile;
+
+  Uint8List? _nuevaImagenBytes;
   final ImagePicker _picker = ImagePicker();
 
   // Se crea una sola vez para no consultar la base en cada rebuild
@@ -161,8 +164,9 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
       );
 
       if (pickedFile != null) {
+        final bytes = await pickedFile.readAsBytes();
         setState(() {
-          _nuevaImagenFile = File(pickedFile.path);
+          _nuevaImagenBytes = bytes;
           _imagenActualPath = '';
         });
       }
@@ -172,13 +176,6 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
         const SnackBar(content: Text('Error al seleccionar imagen')),
       );
     }
-  }
-
-  void _quitarImagen() {
-    setState(() {
-      _nuevaImagenFile = null;
-      _imagenActualPath = '';
-    });
   }
 
   // --- GUARDADO ---
@@ -209,7 +206,9 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
         idCliente: _clienteSeleccionado!.id!,
         nombreCliente: _clienteSeleccionado!.nombre,
         items: _items,
-        imagen: _nuevaImagenFile?.path ?? _imagenActualPath,
+        imagen: _nuevaImagenBytes != null
+            ? base64Encode(_nuevaImagenBytes!)
+            : _imagenActualPath,
         sena: _sena,
         fechaEntrega: _fechaEntrega,
         fechaEncargo: _fechaEncargo,
@@ -236,6 +235,12 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
     }
   }
 
+  void _quitarImagen() {
+  setState(() {
+    _nuevaImagenBytes = null;
+    _imagenActualPath = '';
+  });
+}
   @override
   Widget build(BuildContext context) {
     final responsive = Responsive.of(context);
@@ -330,7 +335,7 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
                         );
                       },
                     ),
-                    
+
                     SizedBox(height: responsive.hp(2)),
 
                     // 2. FECHAS (Ambas son editables)
@@ -511,20 +516,22 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
                               color: theme.colorScheme.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(12),
                               // Lógica para mostrar la nueva foto, o la vieja, o nada.
-                              image: _nuevaImagenFile != null
+                              image: _nuevaImagenBytes != null
                                   ? DecorationImage(
-                                      image: FileImage(_nuevaImagenFile!),
+                                      image: MemoryImage(_nuevaImagenBytes!),
                                       fit: BoxFit.contain,
                                     )
                                   : (_imagenActualPath.isNotEmpty)
                                   ? DecorationImage(
-                                      image: FileImage(File(_imagenActualPath)),
+                                      image: MemoryImage(
+                                        base64Decode(_imagenActualPath),
+                                      ),
                                       fit: BoxFit.contain,
                                     )
                                   : null,
                             ),
                             child:
-                                (_nuevaImagenFile == null &&
+                                (_nuevaImagenBytes == null &&
                                     _imagenActualPath.isEmpty)
                                 ? const Center(
                                     child: Icon(
@@ -536,9 +543,8 @@ class _EditarPedidoPageState extends State<EditarPedidoPage> {
                                 : null,
                           ),
                         ),
-
                         // Botón de eliminar alineado a la derecha
-                        if (_nuevaImagenFile != null ||
+                        if (_nuevaImagenBytes != null ||
                             _imagenActualPath.isNotEmpty)
                           Align(
                             alignment: Alignment.centerRight,
